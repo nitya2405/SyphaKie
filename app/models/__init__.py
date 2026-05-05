@@ -8,3 +8,4 @@ from app.models.job import Job
 from app.models.telegram_connection import TelegramConnection
 from app.models.telegram_auth_token import TelegramAuthToken
 from app.models.telegram_state import TelegramState
+from app.models.favorite import Favorite

@@ -16,6 +16,8 @@ class Pipeline(Base):
     # steps: [{"step": 1, "modality": "text", "model_id": "...", "prompt_template": "...", "input_from": "user"|"step:N"}]
     steps = Column(JSON, nullable=False)
     is_public = Column(Boolean, nullable=False, default=False)
+    cron_schedule = Column(String, nullable=True)   # standard 5-field cron e.g. "0 9 * * 1"
+    last_run_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

@@ -11,6 +11,11 @@ import uuid
 router = APIRouter()
 
 
+class TemplateVariable(BaseModel):
+    label: str
+    default: str = ""
+
+
 class SaveTemplateRequest(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     name: str
@@ -18,6 +23,7 @@ class SaveTemplateRequest(BaseModel):
     modality: str | None = None
     model_id: str | None = None
     params: dict[str, Any] | None = None
+    variables: dict[str, TemplateVariable] | None = None
 
 
 @router.post("/templates")
@@ -31,6 +37,7 @@ def save_template(
         name=body.name, prompt=body.prompt,
         modality=body.modality, model_id=body.model_id,
         params=body.params,
+        variables={k: v.model_dump() for k, v in body.variables.items()} if body.variables else None,
     )
     db.add(t)
     db.commit()
@@ -61,4 +68,4 @@ def delete_template(
 
 
 def _ser(t: PromptTemplate) -> dict:
-    return {"id": str(t.id), "name": t.name, "prompt": t.prompt, "modality": t.modality, "model_id": t.model_id, "params": t.params, "created_at": t.created_at.isoformat()}
+    return {"id": str(t.id), "name": t.name, "prompt": t.prompt, "modality": t.modality, "model_id": t.model_id, "params": t.params, "variables": t.variables, "created_at": t.created_at.isoformat()}

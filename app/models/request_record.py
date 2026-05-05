@@ -16,6 +16,7 @@ class RequestRecord(Base):
     routing_mode = Column(String, nullable=False)
     status = Column(String, nullable=False)         # "pending" | "success" | "failed"
     input_payload = Column(JSON, nullable=False)    # prompt + params, no secrets
+    output_content = Column(String, nullable=True)  # Store text outputs directly
     output_path = Column(String, nullable=True)
     output_url = Column(String, nullable=True)
     credits_deducted = Column(Integer, nullable=False, default=0)

@@ -28,6 +28,10 @@ class PipelineCreate(BaseModel):
     is_public: bool = False
 
 
+class PipelineUpdate(BaseModel):
+    cron_schedule: str | None = None   # pass "" or null to clear
+
+
 class PipelineRunRequest(BaseModel):
     input_prompt: str
     step_prompts: dict[str, str] | None = None   # step_num -> direct prompt, bypasses template
@@ -70,6 +74,27 @@ def get_pipeline(pl_id: str, current_user: User = Depends(get_current_user), db:
     pl = db.query(Pipeline).filter_by(id=pl_id, user_id=current_user.id).first()
     if not pl:
         raise HTTPException(status_code=404, detail="Not found")
+    return {"pipeline": _ser(pl)}
+
+
+@router.patch("/pipelines/{pl_id}")
+def update_pipeline(
+    pl_id: str,
+    body: PipelineUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    pl = db.query(Pipeline).filter_by(id=pl_id, user_id=current_user.id).first()
+    if not pl:
+        raise HTTPException(status_code=404, detail="Not found")
+    if "cron_schedule" in body.model_fields_set:
+        from croniter import croniter
+        sched = body.cron_schedule or None
+        if sched and not croniter.is_valid(sched):
+            raise HTTPException(status_code=400, detail="Invalid cron expression.")
+        pl.cron_schedule = sched
+    db.commit()
+    db.refresh(pl)
     return {"pipeline": _ser(pl)}
 
 
@@ -206,6 +231,8 @@ def _ser(p: Pipeline) -> dict:
         "description": p.description,
         "steps": p.steps,
         "is_public": p.is_public,
+        "cron_schedule": p.cron_schedule,
+        "last_run_at": p.last_run_at.isoformat() if p.last_run_at else None,
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 

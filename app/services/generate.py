@@ -223,6 +223,7 @@ class GenerationService:
 
             record.status = "success"
             record.output_url = output_url
+            record.output_content = adapter_resp.content
             record.credits_deducted = actual
             record.latency_ms = latency_ms
             record.completed_at = datetime.now(timezone.utc)

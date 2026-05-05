@@ -130,12 +130,23 @@ export default function SidebarLayout({ children, balance: balanceProp }: { chil
         <div className="border-t border-border px-3 py-3 space-y-0.5">
           {/* Credits */}
           {balance != null && (
-            <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-muted">
-              <IconCoins />
-              <span className="text-sm">
-                <span className="font-semibold text-primary">{balance.toLocaleString()}</span>
-                <span className="text-faint ml-1">credits</span>
-              </span>
+            <div className="px-3 py-2">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="flex items-center gap-1.5 text-muted">
+                  <IconCoins />
+                  <span className="text-xs font-medium">Credits</span>
+                </span>
+                <span className="text-xs font-semibold text-primary">{balance.toLocaleString()}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-[#1a1a1a] overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min(100, (balance / 1000) * 100)}%`,
+                    background: `linear-gradient(to right, rgba(255,255,255,0.15), #7c3aed)`,
+                  }}
+                />
+              </div>
             </div>
           )}
 

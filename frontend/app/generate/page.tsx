@@ -20,6 +20,15 @@ import {
   ApiError,
 } from "@/lib/api";
 
+interface PromptTemplate {
+  id: string;
+  name: string;
+  prompt: string;
+  modality: string | null;
+  model_id: string | null;
+  variables: Record<string, { label: string; default: string }> | null;
+}
+
 type Modality = "text" | "image" | "video" | "audio";
 type Mode = "manual" | "auto";
 type CreditSource = "personal" | "org";
@@ -149,6 +158,12 @@ function GenerateContent() {
   const [expandedId, setExpandedId]   = useState<string | null>(null);
   const [expandedOutputs, setExpandedOutputs] = useState<Record<string, OutputData | "loading" | "error">>({});
 
+  const [templates, setTemplates]     = useState<PromptTemplate[]>([]);
+  const [tplOpen, setTplOpen]         = useState(false);
+  const [tplVars, setTplVars]         = useState<Record<string, string>>({});
+  const [activeTpl, setActiveTpl]     = useState<PromptTemplate | null>(null);
+  const tplRef = useRef<HTMLDivElement>(null);
+
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -169,6 +184,38 @@ function GenerateContent() {
   }, []);
 
   useEffect(() => { loadBalance(); loadHistory(); }, [loadBalance, loadHistory]);
+
+  useEffect(() => {
+    const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+    fetch(`${BASE}/api/v1/templates`, { headers: { "X-API-Key": getApiKey() ?? "" } })
+      .then(r => r.json()).then(d => setTemplates(d.templates ?? [])).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (tplRef.current && !tplRef.current.contains(e.target as Node)) setTplOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  function applyTemplate(tpl: PromptTemplate) {
+    const varNames = [...(tpl.prompt.matchAll(/\{\{(\w+)\}\}/g))].map(m => m[1]);
+    const defaults: Record<string, string> = {};
+    varNames.forEach(v => { defaults[v] = tpl.variables?.[v]?.default ?? ""; });
+    setActiveTpl(tpl);
+    setTplVars(defaults);
+    if (varNames.length === 0) setPrompt(tpl.prompt);
+    if (tpl.modality) handleModalityChange(tpl.modality as Modality);
+    setTplOpen(false);
+  }
+
+  function renderTplPrompt() {
+    if (!activeTpl) return;
+    let rendered = activeTpl.prompt;
+    Object.entries(tplVars).forEach(([k, v]) => { rendered = rendered.replaceAll(`{{${k}}}`, v); });
+    setPrompt(rendered);
+  }
 
   useEffect(() => {
     if (mode !== "manual") return;
@@ -413,6 +460,71 @@ function GenerateContent() {
               </div>
             </div>
           </div>
+          {/* Template picker */}
+          {templates.length > 0 && (
+            <div className="w-full" ref={tplRef}>
+              <div className="relative inline-block">
+                <button
+                  onClick={() => setTplOpen(v => !v)}
+                  className="text-xs px-3 py-1.5 bg-surface border border-border text-muted rounded-lg hover:border-violet-500/40 hover:text-primary transition-colors flex items-center gap-1.5"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  Templates
+                  {activeTpl && <span className="text-violet-400">· {activeTpl.name}</span>}
+                </button>
+                {tplOpen && (
+                  <div className="absolute top-full left-0 mt-1 w-60 bg-surface border border-border-2 rounded-xl shadow-2xl z-20 overflow-hidden">
+                    <p className="px-3 py-2 text-xs font-medium text-faint border-b border-border">Your templates</p>
+                    <div className="max-h-56 overflow-y-auto divide-y divide-border">
+                      {templates.map(t => (
+                        <button
+                          key={t.id}
+                          onClick={() => applyTemplate(t)}
+                          className="w-full text-left px-3 py-2.5 hover:bg-hover transition-colors"
+                        >
+                          <p className="text-xs font-medium text-primary truncate">{t.name}</p>
+                          <p className="text-xs text-faint truncate">{t.prompt.slice(0, 60)}{t.prompt.length > 60 ? "…" : ""}</p>
+                        </button>
+                      ))}
+                    </div>
+                    {activeTpl && (
+                      <button onClick={() => { setActiveTpl(null); setTplVars({}); }} className="w-full px-3 py-2 text-xs text-faint hover:text-red-400 border-t border-border transition-colors text-left">
+                        Clear template
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Variable fields */}
+              {activeTpl && Object.keys(tplVars).length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2 items-end">
+                  {Object.entries(tplVars).map(([key, val]) => (
+                    <div key={key} className="flex flex-col gap-0.5">
+                      <label className="text-[10px] text-faint uppercase tracking-wide">
+                        {activeTpl.variables?.[key]?.label ?? key}
+                      </label>
+                      <input
+                        value={val}
+                        onChange={e => setTplVars(prev => ({ ...prev, [key]: e.target.value }))}
+                        placeholder={activeTpl.variables?.[key]?.default ?? key}
+                        className="bg-surface border border-border text-primary text-xs rounded-lg px-2.5 py-1.5 w-36 focus:outline-none focus:border-violet-500/60"
+                      />
+                    </div>
+                  ))}
+                  <button
+                    onClick={renderTplPrompt}
+                    className="text-xs px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors"
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Controls — secondary, below prompt */}
           <div className="w-full space-y-3">
             <div className="flex flex-wrap gap-2">

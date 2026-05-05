@@ -20,6 +20,8 @@ interface Pipeline {
   description: string | null;
   steps: PipelineStep[];
   is_public: boolean;
+  cron_schedule: string | null;
+  last_run_at: string | null;
   created_at: string;
 }
 
@@ -64,6 +66,11 @@ export default function PipelinesPage() {
   // Models cache keyed by modality
   const [modelsByModality, setModelsByModality] = useState<Record<string, ModelOption[]>>({});
 
+  // Cron schedule editing
+  const [cronInput, setCronInput] = useState("");
+  const [cronSaving, setCronSaving] = useState(false);
+  const [cronMsg, setCronMsg] = useState("");
+
   // Interactive run state — one entry per step of the selected pipeline
   const [stepStates, setStepStates] = useState<StepState[]>([]);
   const [activeStepIdx, setActiveStepIdx] = useState(0);  // which step is next to run
@@ -96,9 +103,28 @@ export default function PipelinesPage() {
   function selectPipeline(pl: Pipeline) {
     setSelected(pl);
     resetRun(pl);
+    setCronInput(pl.cron_schedule ?? "");
+    setCronMsg("");
     apiFetch<{ runs: Run[] }>(`/api/v1/pipelines/${pl.id}/runs`)
       .then((d) => setRuns(d.runs))
       .catch(() => {});
+  }
+
+  async function saveCron(pl: Pipeline) {
+    setCronSaving(true);
+    setCronMsg("");
+    try {
+      const res = await apiFetch<{ pipeline: Pipeline }>(`/api/v1/pipelines/${pl.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ cron_schedule: cronInput.trim() || null }),
+      });
+      setSelected(res.pipeline);
+      setPipelines(prev => prev.map(p => p.id === pl.id ? res.pipeline : p));
+      setCronMsg(cronInput.trim() ? "Schedule saved." : "Schedule cleared.");
+    } catch (err: unknown) {
+      setCronMsg(err instanceof Error ? err.message : "Invalid expression.");
+    }
+    setCronSaving(false);
   }
 
   function resetRun(pl: Pipeline) {
@@ -301,7 +327,7 @@ export default function PipelinesPage() {
                               disabled={ss.status === "running"}
                               rows={3}
                               placeholder={i === 0 ? "Enter your prompt…" : "Prompt (auto-filled from previous step, edit freely)"}
-                              className="w-full bg-surface-2/40 border border-[#2a2a2a] text-primary text-xs rounded-lg px-2.5 py-1.5 resize-y focus:outline-none focus:border-violet-500 placeholder-[#444] disabled:opacity-50"
+                              className="w-full bg-surface-2 border border-[#2a2a2a] text-primary text-xs rounded-lg px-2.5 py-1.5 resize-y focus:outline-none focus:border-violet-500 placeholder-[#444] disabled:opacity-50"
                             />
                           )}
 
@@ -373,13 +399,43 @@ export default function PipelinesPage() {
                     ))}
                   </div>
                 )}
+
+                {/* Cron schedule */}
+                <div className="border border-border rounded-xl bg-surface-2 p-4">
+                  <p className="text-xs font-medium text-faint mb-3">Schedule (cron)</p>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      value={cronInput}
+                      onChange={e => setCronInput(e.target.value)}
+                      placeholder="e.g. 0 9 * * 1  (Mon 9am)"
+                      className="flex-1 bg-surface border border-[#2a2a2a] text-primary text-xs rounded-lg px-2.5 py-1.5 font-mono focus:outline-none focus:border-violet-500 placeholder-[#444]"
+                    />
+                    <button
+                      onClick={() => saveCron(selected)}
+                      disabled={cronSaving}
+                      className="text-xs px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg disabled:opacity-40 transition-colors whitespace-nowrap"
+                    >
+                      {cronSaving ? "Saving…" : "Save"}
+                    </button>
+                  </div>
+                  {selected.last_run_at && (
+                    <p className="text-xs text-faint mt-2">Last ran: {new Date(selected.last_run_at).toLocaleString()}</p>
+                  )}
+                  {!selected.last_run_at && selected.cron_schedule && (
+                    <p className="text-xs text-faint mt-2">Scheduled · never run yet</p>
+                  )}
+                  {cronMsg && (
+                    <p className={`text-xs mt-2 ${cronMsg.includes("saved") || cronMsg.includes("cleared") ? "text-emerald-400" : "text-red-400"}`}>{cronMsg}</p>
+                  )}
+                  <p className="text-[10px] text-[#444] mt-2">Standard 5-field cron: minute hour day month weekday</p>
+                </div>
               </>
             ) : (
               <div className="border border-border rounded-xl bg-surface-2 p-5">
                 <h2 className="text-sm font-medium text-primary mb-4">Create Pipeline</h2>
                 <div className="space-y-3">
-                  <input placeholder="Pipeline name" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-surface-2/40 border border-[#2a2a2a] text-primary text-sm rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-violet-500 placeholder-[#444]" />
-                  <input placeholder="Description (optional)" value={desc} onChange={(e) => setDesc(e.target.value)} className="w-full bg-surface-2/40 border border-[#2a2a2a] text-primary text-sm rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-violet-500 placeholder-[#444]" />
+                  <input placeholder="Pipeline name" value={name} onChange={(e) => setName(e.target.value)} className="w-full bg-surface-2 border border-[#2a2a2a] text-primary rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-violet-500 placeholder-[#444]" />
+                  <input placeholder="Description (optional)" value={desc} onChange={(e) => setDesc(e.target.value)} className="w-full bg-surface-2 border border-[#2a2a2a] text-primary rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-violet-500 placeholder-[#444]" />
 
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-faint">Steps</p>
@@ -387,7 +443,7 @@ export default function PipelinesPage() {
                       <div key={i} className="border border-[#2a2a2a] rounded-lg p-3 space-y-2 bg-surface">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-medium text-faint w-10">Step {i + 1}</span>
-                          <select value={s.modality} onChange={(e) => updateStep(i, "modality", e.target.value)} className="bg-surface-2/40 border border-[#2a2a2a] text-primary rounded-lg px-2 py-1 text-xs focus:outline-none">
+                          <select value={s.modality} onChange={(e) => updateStep(i, "modality", e.target.value)} className="bg-surface-2 border border-[#2a2a2a] text-primary rounded-lg px-2 py-1 text-xs focus:outline-none">
                             {["text", "image", "video", "audio"].map((m) => <option key={m}>{m}</option>)}
                           </select>
                           {steps.length > 1 && (
@@ -403,7 +459,7 @@ export default function PipelinesPage() {
                           <select
                             value={s.model_id}
                             onChange={(e) => selectStepModel(i, e.target.value)}
-                            className="w-full bg-surface-2/40 border border-[#2a2a2a] text-primary rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-violet-500"
+                            className="w-full bg-surface-2 border border-[#2a2a2a] text-primary rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-violet-500"
                           >
                             <option value="">— select model —</option>
                             {(modelsByModality[s.modality] ?? []).map((m) => (
@@ -419,7 +475,7 @@ export default function PipelinesPage() {
                             placeholder={i === 0 ? "Default prompt template (e.g. {{input}})" : `Template — use {{input}} or {{step:${i}}} for step ${i} output`}
                             value={s.prompt_template}
                             onChange={(e) => updateStep(i, "prompt_template", e.target.value)}
-                            className="w-full bg-surface-2/40 border border-[#2a2a2a] text-primary rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-violet-500 placeholder-[#444]"
+                            className="w-full bg-surface-2 border border-[#2a2a2a] text-primary rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-violet-500 placeholder-[#444]"
                           />
                           <p className="text-xs text-faint pl-0.5">
                             Hint: <code className="bg-[#222] px-1 rounded">{"{{input}}"}</code> = initial prompt,{" "}

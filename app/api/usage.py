@@ -163,6 +163,7 @@ def get_usage(
                 "latency_ms": r.latency_ms,
                 "error_message": r.error_message,
                 "prompt": r.input_payload.get("prompt") if r.input_payload else None,
+                "output_content": r.output_content,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
                 "output_url": r.output_url,
                 "output_path": r.output_path,

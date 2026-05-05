@@ -15,4 +15,5 @@ class PromptTemplate(Base):
     modality = Column(String, nullable=True)
     model_id = Column(String, nullable=True)
     params = Column(JSONB, nullable=True)
+    variables = Column(JSONB, nullable=True)   # {"var_name": {"label": str, "default": str}}
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

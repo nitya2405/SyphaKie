@@ -17,6 +17,7 @@ interface RequestItem {
   latency_ms: number | null;
   error_message: string | null;
   prompt: string | null;
+  output_content: string | null;
   created_at: string;
   output_url: string | null;
   output_path: string | null;
@@ -57,18 +58,58 @@ const MODALITY_COLORS: Record<string, string> = {
 
 // ── History Tab ───────────────────────────────────────────────────────────────
 
+function StarButton({ requestId, saved, onToggle }: { requestId: string; saved: boolean; onToggle: (id: string, saved: boolean) => void }) {
+  const [busy, setBusy] = useState(false);
+  async function toggle(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (saved) {
+        await apiFetch(`/api/v1/favorites/${requestId}`, { method: "DELETE" });
+      } else {
+        await apiFetch("/api/v1/favorites", { method: "POST", body: JSON.stringify({ request_id: requestId }) });
+      }
+      onToggle(requestId, !saved);
+    } catch {}
+    setBusy(false);
+  }
+  return (
+    <button onClick={toggle} disabled={busy} title={saved ? "Unsave" : "Save"} className="p-1 transition-colors disabled:opacity-40">
+      <svg className={`w-3.5 h-3.5 transition-colors ${saved ? "text-yellow-400 fill-yellow-400" : "text-[#444] fill-none hover:text-yellow-400"}`} stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+      </svg>
+    </button>
+  );
+}
+
 function HistoryTab() {
   const router = useRouter();
   const [items, setItems] = useState<RequestItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [offset, setOffset] = useState(0);
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const LIMIT = 25;
 
   const [modality, setModality] = useState("");
   const [provider, setProvider] = useState("");
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    apiFetch<{ ids: string[] }>("/api/v1/favorites/ids")
+      .then((d) => setSavedIds(new Set(d.ids)))
+      .catch(() => {});
+  }, []);
+
+  function handleToggle(id: string, nowSaved: boolean) {
+    setSavedIds((prev) => {
+      const next = new Set(prev);
+      nowSaved ? next.add(id) : next.delete(id);
+      return next;
+    });
+  }
 
   const load = useCallback(async (off = 0) => {
     setLoading(true);
@@ -91,9 +132,9 @@ function HistoryTab() {
   useEffect(() => { load(0); }, [load]);
 
   function exportCSV() {
-    const headers = ["request_id", "created_at", "modality", "provider", "model", "status", "credits", "latency_ms", "prompt"].join(",");
+    const headers = ["request_id", "created_at", "modality", "provider", "model", "status", "credits", "latency_ms", "prompt", "output"].join(",");
     const rows = items.map((r) =>
-      [r.request_id, r.created_at, r.modality, r.provider ?? "", r.model ?? "", r.status, r.credits_deducted, r.latency_ms ?? "", `"${(r.prompt ?? "").replace(/"/g, '""')}"`].join(",")
+      [r.request_id, r.created_at, r.modality, r.provider ?? "", r.model ?? "", r.status, r.credits_deducted, r.latency_ms ?? "", `"${(r.prompt ?? "").replace(/"/g, '""')}"`, `"${(r.output_content ?? fileUrl(r) ?? "").replace(/"/g, '""')}"`].join(",")
     );
     const blob = new Blob([[headers, ...rows].join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -144,49 +185,65 @@ function HistoryTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-xs text-[#555] bg-surface border-b border-border uppercase tracking-wide">
+                <th className="px-3 py-2.5 w-8" />
                 <th className="text-left px-4 py-2.5 font-medium">Time</th>
                 <th className="text-left px-4 py-2.5 font-medium">Prompt</th>
+                <th className="text-left px-4 py-2.5 font-medium">Output</th>
                 <th className="text-left px-4 py-2.5 font-medium">Model</th>
                 <th className="text-left px-4 py-2.5 font-medium">Status</th>
                 <th className="text-right px-4 py-2.5 font-medium">Credits</th>
                 <th className="text-right px-4 py-2.5 font-medium">Latency</th>
-                <th className="px-4 py-2.5" />
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1a1a1a]">
               {visible.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-10 text-center text-[#555] text-sm">No requests found.</td></tr>
+                <tr><td colSpan={8} className="px-4 py-10 text-center text-[#555] text-sm">No requests found.</td></tr>
               )}
-              {visible.map((item) => (
-                <tr key={item.request_id} className="hover:bg-surface-2/50 transition-colors">
-                  <td className="px-4 py-3 text-xs text-[#555] whitespace-nowrap">{fmtDate(item.created_at)}</td>
-                  <td className="px-4 py-3 max-w-xs">
-                    <p className="text-xs text-[#ccc] truncate">{item.prompt ?? "—"}</p>
-                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium mt-0.5 inline-block ${MODALITY_COLORS[item.modality] ?? "bg-[#222] text-[#888]"}`}>
-                      {item.modality}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-[#888] font-mono max-w-xs truncate">{item.model ?? "—"}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${STATUS_COLORS[item.status] ?? "bg-[#222] text-[#888]"}`}>
-                      {item.status}
-                    </span>
-                    {item.error_message && (
-                      <p className="text-xs text-red-400 mt-0.5 truncate max-w-xs" title={item.error_message}>{item.error_message}</p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right text-xs font-mono text-[#aaa]">{item.credits_deducted}</td>
-                  <td className="px-4 py-3 text-right text-xs text-[#888]">{fmtMs(item.latency_ms)}</td>
-                  <td className="px-4 py-3 text-right">
-                    {item.output_url && (
-                      <a href={item.output_url} target="_blank" rel="noopener noreferrer" className="text-xs text-violet-400 hover:text-violet-300">View</a>
-                    )}
-                    {item.output_path && !item.output_url && (
-                      <a href={`${BASE}/files/${item.output_path.split("/").pop()}`} target="_blank" rel="noopener noreferrer" className="text-xs text-violet-400 hover:text-violet-300">View</a>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {visible.map((item) => {
+                const url = fileUrl(item);
+                return (
+                  <tr key={item.request_id} className="hover:bg-surface-2/50 transition-colors">
+                    <td className="px-3 py-3">
+                      <StarButton requestId={item.request_id} saved={savedIds.has(item.request_id)} onToggle={handleToggle} />
+                    </td>
+                    <td className="px-4 py-3 text-xs text-[#555] whitespace-nowrap">{fmtDate(item.created_at)}</td>
+                    <td className="px-4 py-3 max-w-xs">
+                      <p className="text-xs text-[#ccc] truncate">{item.prompt ?? "—"}</p>
+                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium mt-0.5 inline-block ${MODALITY_COLORS[item.modality] ?? "bg-[#222] text-[#888]"}`}>
+                        {item.modality}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 max-w-xs">
+                      {item.output_content ? (
+                        <p className="text-xs text-[#aaa] line-clamp-2 leading-relaxed" title={item.output_content}>{item.output_content}</p>
+                      ) : item.modality === "image" && url ? (
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="block w-10 h-10 rounded border border-border overflow-hidden bg-surface hover:border-[#444] transition-colors">
+                          <img src={url} alt="" className="w-full h-full object-cover" />
+                        </a>
+                      ) : item.modality === "video" && url ? (
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="block w-10 h-10 rounded border border-border overflow-hidden bg-surface hover:border-[#444] transition-colors">
+                          <video src={url} className="w-full h-full object-cover" muted />
+                        </a>
+                      ) : item.modality === "audio" && url ? (
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="text-xs text-violet-400 hover:text-violet-300">▶ Audio</a>
+                      ) : (
+                        <span className="text-xs text-[#444]">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-[#888] font-mono max-w-xs truncate">{item.model ?? "—"}</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${STATUS_COLORS[item.status] ?? "bg-[#222] text-[#888]"}`}>
+                        {item.status}
+                      </span>
+                      {item.error_message && (
+                        <p className="text-xs text-red-400 mt-0.5 truncate max-w-xs" title={item.error_message}>{item.error_message}</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right text-xs font-mono text-[#aaa]">{item.credits_deducted}</td>
+                    <td className="px-4 py-3 text-right text-xs text-[#888]">{fmtMs(item.latency_ms)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -8,7 +8,7 @@ from app.config import settings
 from app.api.deps import get_current_user, get_db
 from app.api import generate, outputs, credits, models, usage, auth, admin
 from app.api import billing, notifications, orgs, proxy, templates
-from app.api import webhooks, leaderboard, pipelines, cache, jobs
+from app.api import webhooks, leaderboard, pipelines, cache, jobs, favorites
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.models.user import User
 
@@ -16,6 +16,7 @@ from app.models.user import User
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ── Startup ───────────────────────────────────────────────────────────────
+    print(f"DEBUG: TELEGRAM_BOT_TOKEN set: {bool(settings.TELEGRAM_BOT_TOKEN)}")
     if settings.TELEGRAM_BOT_TOKEN:
         from app.telegram import start_bot
         asyncio.create_task(start_bot(
@@ -24,12 +25,18 @@ async def lifespan(app: FastAPI):
             webhook_secret=settings.TELEGRAM_WEBHOOK_SECRET,
         ))
 
+    from app.services import scheduler
+    scheduler.start()
+
     yield
 
     # ── Shutdown ──────────────────────────────────────────────────────────────
     if settings.TELEGRAM_BOT_TOKEN:
         from app.telegram import stop_bot
         await stop_bot()
+
+    from app.services import scheduler as _sched
+    _sched.stop()
 
 
 def create_app() -> FastAPI:
@@ -89,6 +96,7 @@ def create_app() -> FastAPI:
     app.include_router(pipelines.router,      prefix="/api/v1",  tags=["Pipelines"])
     app.include_router(cache.router,          prefix="/api/v1",  tags=["Cache"])
     app.include_router(jobs.router,           prefix="/api/v1",  tags=["Jobs"])
+    app.include_router(favorites.router,      prefix="/api/v1",  tags=["Favorites"])
     app.include_router(proxy.router,          prefix="/api",      tags=["Proxy"])
 
     # Telegram — auth-protected endpoints + webhook receiver (separate routers)
