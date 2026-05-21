@@ -141,9 +141,14 @@ function HistoryTab() {
   const [modality, setModality] = useState("");
   const [provider, setProvider] = useState("");
   const [status, setStatus] = useState("");
-  const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   useEffect(() => {
     apiFetch<{ ids: string[] }>("/api/v1/favorites/ids")
@@ -206,16 +211,19 @@ function HistoryTab() {
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
-        <form onSubmit={e => { e.preventDefault(); setSearch(searchInput); }} className="flex gap-1 flex-1 min-w-48">
+        <div className="flex gap-1 flex-1 min-w-48 relative">
           <input
             type="text" placeholder="Search prompts and outputs…" value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="bg-surface-2/50 border border-border-2 text-primary text-sm rounded-lg px-2.5 py-1.5 flex-1 focus:outline-none focus:border-violet-500 placeholder-[#444]"
+            className="bg-surface-2/50 border border-border-2 text-primary text-sm rounded-lg px-2.5 py-1.5 flex-1 focus:outline-none focus:border-violet-500 placeholder-[#444] pr-6"
           />
-          {search && (
-            <button type="button" onClick={() => { setSearch(""); setSearchInput(""); }} className="text-xs text-[#555] hover:text-[#aaa] px-1">✕</button>
+          {searchInput && (
+            <button
+              onClick={() => setSearchInput("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-[#444] hover:text-[#aaa] text-sm leading-none"
+            >✕</button>
           )}
-        </form>
+        </div>
         <input
           type="text" placeholder="Filter by tag…" value={tagFilter}
           onChange={(e) => setTagFilter(e.target.value)}
