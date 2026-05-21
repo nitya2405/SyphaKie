@@ -1,5 +1,7 @@
 # SyphaKie
 
+> **KIE** — *Knowledge In Everything*
+
 **SyphaKie** is a self-hosted AI generation platform that unifies multiple AI providers (OpenAI, Anthropic, Google, FAL, Stability AI, ElevenLabs, Kling, Luma, Wan, Qwen, xAI) behind a single API and web interface. Generate text, images, video, and audio — with smart routing, credit billing, pipelines, A/B experiments, a Telegram bot, and full usage analytics — all from one place.
 
 ---
