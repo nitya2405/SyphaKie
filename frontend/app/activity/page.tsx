@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getApiKey } from "@/lib/auth";
 import SidebarLayout from "@/components/SidebarLayout";
@@ -164,7 +164,25 @@ function HistoryTab() {
     });
   }
 
-  const load = useCallback(async (off = 0) => {
+  // Re-fetch from page 0 whenever any filter changes
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    const params = new URLSearchParams({ limit: String(LIMIT), offset: "0" });
+    if (modality) params.set("modality", modality);
+    if (provider) params.set("provider", provider);
+    if (status) params.set("status", status);
+    if (search) params.set("search", search);
+    if (tagFilter) params.set("tag", tagFilter);
+    apiFetch<{ total: number; items: RequestItem[] }>(`/api/v1/usage?${params}`)
+      .then(d => { if (alive) { setItems(d.items); setTotal(d.total); setOffset(0); } })
+      .catch(err => { if (alive && err instanceof ApiError && err.status === 401) router.replace("/login"); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modality, provider, status, search, tagFilter]);
+
+  async function goToPage(off: number) {
     setLoading(true);
     try {
       const params = new URLSearchParams({ limit: String(LIMIT), offset: String(off) });
@@ -182,9 +200,7 @@ function HistoryTab() {
     } finally {
       setLoading(false);
     }
-  }, [modality, provider, status, search, tagFilter, router]);
-
-  useEffect(() => { load(0); }, [load]);
+  }
 
   function exportCSV() {
     const headers = ["request_id", "created_at", "modality", "provider", "model", "status", "credits", "latency_ms", "prompt", "output", "tags"].join(",");
@@ -323,11 +339,11 @@ function HistoryTab() {
 
       {total > LIMIT && (
         <div className="flex items-center justify-between mt-4 text-sm text-[#888]">
-          <button onClick={() => load(Math.max(0, offset - LIMIT))} disabled={offset === 0} className="px-3 py-1.5 border border-border-2 rounded-lg text-[#aaa] disabled:opacity-40 hover:border-[#444] hover:text-primary transition-colors">
+          <button onClick={() => goToPage(Math.max(0, offset - LIMIT))} disabled={offset === 0} className="px-3 py-1.5 border border-border-2 rounded-lg text-[#aaa] disabled:opacity-40 hover:border-[#444] hover:text-primary transition-colors">
             ← Prev
           </button>
           <span className="text-xs">{offset + 1}–{Math.min(offset + LIMIT, total)} of {total}</span>
-          <button onClick={() => load(offset + LIMIT)} disabled={offset + LIMIT >= total} className="px-3 py-1.5 border border-border-2 rounded-lg text-[#aaa] disabled:opacity-40 hover:border-[#444] hover:text-primary transition-colors">
+          <button onClick={() => goToPage(offset + LIMIT)} disabled={offset + LIMIT >= total} className="px-3 py-1.5 border border-border-2 rounded-lg text-[#aaa] disabled:opacity-40 hover:border-[#444] hover:text-primary transition-colors">
             Next →
           </button>
         </div>
