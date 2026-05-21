@@ -168,11 +168,11 @@ def get_usage(
     if to_date:
         query = query.filter(RequestRecord.created_at <= to_date)
     if search:
-        pattern = f"%{search}%"
+        pat = f"%{search.lower()}%"
         query = query.filter(
             or_(
-                RequestRecord.output_content.ilike(pattern),
-                RequestRecord.input_payload["prompt"].astext.ilike(pattern),
+                func.lower(RequestRecord.output_content).like(pat),
+                func.lower(RequestRecord.input_payload["prompt"].astext).like(pat),
             )
         )
     if tag:
