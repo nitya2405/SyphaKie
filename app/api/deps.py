@@ -35,6 +35,17 @@ def get_current_user(
     return user
 
 
+def get_current_api_key(
+    x_api_key: str = Header(..., alias="X-API-Key"),
+    db: Session = Depends(get_db),
+) -> ApiKey:
+    key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
+    api_key = db.query(ApiKey).filter(ApiKey.key_hash == key_hash, ApiKey.is_active == True).first()
+    if not api_key:
+        raise InvalidAPIKeyError()
+    return api_key
+
+
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if current_user.role != "admin":
         raise ForbiddenError()

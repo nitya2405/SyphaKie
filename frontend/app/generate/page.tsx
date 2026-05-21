@@ -27,6 +27,7 @@ interface PromptTemplate {
   modality: string | null;
   model_id: string | null;
   variables: Record<string, { label: string; default: string }> | null;
+  is_public: boolean;
 }
 
 type Modality = "text" | "image" | "video" | "audio";
@@ -159,7 +160,9 @@ function GenerateContent() {
   const [expandedOutputs, setExpandedOutputs] = useState<Record<string, OutputData | "loading" | "error">>({});
 
   const [templates, setTemplates]     = useState<PromptTemplate[]>([]);
+  const [communityTpls, setCommunityTpls] = useState<PromptTemplate[]>([]);
   const [tplOpen, setTplOpen]         = useState(false);
+  const [tplTab, setTplTab]           = useState<"mine" | "community">("mine");
   const [tplVars, setTplVars]         = useState<Record<string, string>>({});
   const [activeTpl, setActiveTpl]     = useState<PromptTemplate | null>(null);
   const tplRef = useRef<HTMLDivElement>(null);
@@ -187,8 +190,11 @@ function GenerateContent() {
 
   useEffect(() => {
     const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-    fetch(`${BASE}/api/v1/templates`, { headers: { "X-API-Key": getApiKey() ?? "" } })
+    const headers = { "X-API-Key": getApiKey() ?? "" };
+    fetch(`${BASE}/api/v1/templates`, { headers })
       .then(r => r.json()).then(d => setTemplates(d.templates ?? [])).catch(() => {});
+    fetch(`${BASE}/api/v1/templates/public`, { headers })
+      .then(r => r.json()).then(d => setCommunityTpls(d.templates ?? [])).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -475,10 +481,20 @@ function GenerateContent() {
                   {activeTpl && <span className="text-violet-400">· {activeTpl.name}</span>}
                 </button>
                 {tplOpen && (
-                  <div className="absolute top-full left-0 mt-1 w-60 bg-surface border border-border-2 rounded-xl shadow-2xl z-20 overflow-hidden">
-                    <p className="px-3 py-2 text-xs font-medium text-faint border-b border-border">Your templates</p>
+                  <div className="absolute top-full left-0 mt-1 w-64 bg-surface border border-border-2 rounded-xl shadow-2xl z-20 overflow-hidden">
+                    <div className="flex border-b border-border">
+                      {(["mine", "community"] as const).map(tab => (
+                        <button
+                          key={tab}
+                          onClick={() => setTplTab(tab)}
+                          className={`flex-1 px-3 py-1.5 text-xs font-medium transition-colors ${tplTab === tab ? "text-primary border-b-2 border-violet-500" : "text-faint hover:text-primary"}`}
+                        >
+                          {tab === "mine" ? "Mine" : `Community${communityTpls.length > 0 ? ` (${communityTpls.length})` : ""}`}
+                        </button>
+                      ))}
+                    </div>
                     <div className="max-h-56 overflow-y-auto divide-y divide-border">
-                      {templates.map(t => (
+                      {(tplTab === "mine" ? templates : communityTpls).map(t => (
                         <button
                           key={t.id}
                           onClick={() => applyTemplate(t)}
@@ -488,6 +504,11 @@ function GenerateContent() {
                           <p className="text-xs text-faint truncate">{t.prompt.slice(0, 60)}{t.prompt.length > 60 ? "…" : ""}</p>
                         </button>
                       ))}
+                      {(tplTab === "mine" ? templates : communityTpls).length === 0 && (
+                        <p className="px-3 py-4 text-xs text-faint text-center">
+                          {tplTab === "mine" ? "No saved templates yet." : "No community templates yet."}
+                        </p>
+                      )}
                     </div>
                     {activeTpl && (
                       <button onClick={() => { setActiveTpl(null); setTplVars({}); }} className="w-full px-3 py-2 text-xs text-faint hover:text-red-400 border-t border-border transition-colors text-left">

@@ -6,7 +6,7 @@ import SidebarLayout from "@/components/SidebarLayout";
 import { apiFetch } from "@/lib/api";
 
 interface Webhook { id: string; url: string; events: string[]; is_active: boolean; created_at: string }
-interface Delivery { id: string; event: string; status: string; attempts: number; last_response_code: number | null; last_error: string | null; delivered_at: string | null; created_at: string }
+interface Delivery { id: string; event: string; status: string; attempts: number; payload: Record<string, unknown> | null; last_response_code: number | null; last_error: string | null; delivered_at: string | null; created_at: string }
 
 const ALL_EVENTS = ["generation.complete", "generation.failed", "credits.low", "pipeline.complete", "finetune.complete"];
 
@@ -23,6 +23,7 @@ export default function WebhooksPage() {
   const [events, setEvents] = useState<string[]>(["generation.complete"]);
   const [creating, setCreating] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [replayingId, setReplayingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!getApiKey()) { router.replace("/login"); return; }
@@ -80,6 +81,18 @@ export default function WebhooksPage() {
       }
     } catch {}
     setTesting(false);
+  }
+
+  async function replay(deliveryId: string) {
+    setReplayingId(deliveryId);
+    try {
+      await apiFetch(`/api/v1/webhooks/deliveries/${deliveryId}/replay`, { method: "POST" });
+      if (selected) {
+        const d = await apiFetch<{ deliveries: Delivery[] }>(`/api/v1/webhooks/${selected.id}/deliveries`);
+        setDeliveries(d.deliveries);
+      }
+    } catch {}
+    setReplayingId(null);
   }
 
   function toggleEvent(e: string) {
@@ -163,7 +176,15 @@ export default function WebhooksPage() {
                         <span className="text-xs text-[#aaa]">{d.event}</span>
                         <span className="text-xs text-faint">{d.last_response_code ? `HTTP ${d.last_response_code}` : ""}</span>
                         {d.last_error && <span className="text-xs text-red-400 truncate max-w-32">{d.last_error}</span>}
-                        <span className="text-xs text-[#444] ml-auto">{d.attempts} attempt{d.attempts !== 1 ? "s" : ""}</span>
+                        <span className="text-xs text-[#444]">{d.attempts} attempt{d.attempts !== 1 ? "s" : ""}</span>
+                        <button
+                          onClick={() => replay(d.id)}
+                          disabled={replayingId === d.id}
+                          className="ml-auto text-xs text-violet-400 hover:text-violet-300 disabled:opacity-40 shrink-0"
+                          title="Replay this delivery"
+                        >
+                          {replayingId === d.id ? "Replaying…" : "Replay"}
+                        </button>
                       </div>
                     ))}
                   </div>

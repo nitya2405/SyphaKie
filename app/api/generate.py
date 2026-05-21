@@ -1,11 +1,12 @@
 import uuid as _uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, BackgroundTasks
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_user, get_current_api_key, get_db
 from app.schemas.generate import GenerateRequest, GenerateResponse
 from app.services.generate import GenerationService
 from app.models.user import User
+from app.models.api_key import ApiKey
 from app.models.job import Job
 
 router = APIRouter()
@@ -56,8 +57,17 @@ async def generate(
     body: GenerateRequest,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
+    current_key: ApiKey = Depends(get_current_api_key),
     db: Session = Depends(get_db),
 ):
+    if current_key.monthly_credit_limit is not None:
+        used = current_key.credits_used_this_month or 0
+        if used >= current_key.monthly_credit_limit:
+            raise HTTPException(status_code=402, detail={
+                "code": "SPENDING_LIMIT_EXCEEDED",
+                "message": f"Monthly spending limit of {current_key.monthly_credit_limit} credits reached.",
+            })
+
     if body.async_job:
         job = Job(
             id=_uuid.uuid4(),
@@ -72,4 +82,10 @@ async def generate(
         return {"job_id": str(job.id), "status": "queued"}
 
     service = GenerationService(db)
-    return await service.run(user=current_user, request=body)
+    result = await service.run(user=current_user, request=body)
+
+    if current_key.monthly_credit_limit is not None:
+        current_key.credits_used_this_month = (current_key.credits_used_this_month or 0) + (result.meta.credits_used or 0)
+        db.commit()
+
+    return result

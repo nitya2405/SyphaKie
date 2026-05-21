@@ -18,6 +18,7 @@ interface RequestItem {
   error_message: string | null;
   prompt: string | null;
   output_content: string | null;
+  tags: string[];
   created_at: string;
   output_url: string | null;
   output_path: string | null;
@@ -83,6 +84,51 @@ function StarButton({ requestId, saved, onToggle }: { requestId: string; saved: 
   );
 }
 
+function TagEditor({ requestId, initialTags, onSave }: { requestId: string; initialTags: string[]; onSave: (tags: string[]) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [input, setInput] = useState(initialTags.join(", "));
+  const [busy, setBusy] = useState(false);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    const tags = input.split(",").map(t => t.trim()).filter(Boolean);
+    try {
+      await apiFetch(`/api/v1/usage/${requestId}/tags`, { method: "PATCH", body: JSON.stringify({ tags }) });
+      onSave(tags);
+      setEditing(false);
+    } catch {}
+    setBusy(false);
+  }
+
+  if (editing) {
+    return (
+      <form onSubmit={save} className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+        <input
+          autoFocus
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          placeholder="tag1, tag2…"
+          className="text-xs bg-[#111] border border-violet-500/60 text-primary rounded px-1.5 py-0.5 w-28 focus:outline-none"
+        />
+        <button type="submit" disabled={busy} className="text-xs text-violet-400 hover:text-violet-300">✓</button>
+        <button type="button" onClick={() => setEditing(false)} className="text-xs text-[#555] hover:text-[#aaa]">✕</button>
+      </form>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap gap-0.5 cursor-pointer" onClick={e => { e.stopPropagation(); setEditing(true); }} title="Click to edit tags">
+      {initialTags.length > 0
+        ? initialTags.map(t => (
+            <span key={t} className="text-xs px-1.5 py-0.5 bg-violet-500/15 text-violet-300 rounded">{t}</span>
+          ))
+        : <span className="text-xs text-[#333] hover:text-[#555]">+ tag</span>
+      }
+    </div>
+  );
+}
+
 function HistoryTab() {
   const router = useRouter();
   const [items, setItems] = useState<RequestItem[]>([]);
@@ -96,6 +142,8 @@ function HistoryTab() {
   const [provider, setProvider] = useState("");
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
 
   useEffect(() => {
     apiFetch<{ ids: string[] }>("/api/v1/favorites/ids")
@@ -118,6 +166,8 @@ function HistoryTab() {
       if (modality) params.set("modality", modality);
       if (provider) params.set("provider", provider);
       if (status) params.set("status", status);
+      if (search) params.set("search", search);
+      if (tagFilter) params.set("tag", tagFilter);
       const data = await apiFetch<{ total: number; items: RequestItem[] }>(`/api/v1/usage?${params}`);
       setItems(data.items);
       setTotal(data.total);
@@ -127,14 +177,14 @@ function HistoryTab() {
     } finally {
       setLoading(false);
     }
-  }, [modality, provider, status, router]);
+  }, [modality, provider, status, search, tagFilter, router]);
 
   useEffect(() => { load(0); }, [load]);
 
   function exportCSV() {
-    const headers = ["request_id", "created_at", "modality", "provider", "model", "status", "credits", "latency_ms", "prompt", "output"].join(",");
+    const headers = ["request_id", "created_at", "modality", "provider", "model", "status", "credits", "latency_ms", "prompt", "output", "tags"].join(",");
     const rows = items.map((r) =>
-      [r.request_id, r.created_at, r.modality, r.provider ?? "", r.model ?? "", r.status, r.credits_deducted, r.latency_ms ?? "", `"${(r.prompt ?? "").replace(/"/g, '""')}"`, `"${(r.output_content ?? fileUrl(r) ?? "").replace(/"/g, '""')}"`].join(",")
+      [r.request_id, r.created_at, r.modality, r.provider ?? "", r.model ?? "", r.status, r.credits_deducted, r.latency_ms ?? "", `"${(r.prompt ?? "").replace(/"/g, '""')}"`, `"${(r.output_content ?? fileUrl(r) ?? "").replace(/"/g, '""')}"`, `"${(r.tags ?? []).join(";")}`].join(",")
     );
     const blob = new Blob([[headers, ...rows].join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -142,9 +192,9 @@ function HistoryTab() {
     URL.revokeObjectURL(url);
   }
 
-  const visible = search
-    ? items.filter((i) => (i.prompt ?? "").toLowerCase().includes(search.toLowerCase()) || (i.model ?? "").toLowerCase().includes(search.toLowerCase()))
-    : items;
+  function handleTagSave(requestId: string, tags: string[]) {
+    setItems(prev => prev.map(i => i.request_id === requestId ? { ...i, tags } : i));
+  }
 
   return (
     <div>
@@ -156,10 +206,20 @@ function HistoryTab() {
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
+        <form onSubmit={e => { e.preventDefault(); setSearch(searchInput); }} className="flex gap-1 flex-1 min-w-48">
+          <input
+            type="text" placeholder="Search prompts and outputs…" value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="bg-surface-2/50 border border-border-2 text-primary text-sm rounded-lg px-2.5 py-1.5 flex-1 focus:outline-none focus:border-violet-500 placeholder-[#444]"
+          />
+          {search && (
+            <button type="button" onClick={() => { setSearch(""); setSearchInput(""); }} className="text-xs text-[#555] hover:text-[#aaa] px-1">✕</button>
+          )}
+        </form>
         <input
-          type="text" placeholder="Search prompt or model…" value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="bg-surface-2/50 border border-border-2 text-primary text-sm rounded-lg px-2.5 py-1.5 flex-1 min-w-48 focus:outline-none focus:border-violet-500 placeholder-[#444]"
+          type="text" placeholder="Filter by tag…" value={tagFilter}
+          onChange={(e) => setTagFilter(e.target.value)}
+          className="bg-surface-2/50 border border-border-2 text-primary text-sm rounded-lg px-2.5 py-1.5 w-32 focus:outline-none focus:border-violet-500 placeholder-[#444]"
         />
         {[
           { label: "All modalities", value: modality, set: setModality, opts: ["text", "image", "video", "audio"] },
@@ -189,6 +249,7 @@ function HistoryTab() {
                 <th className="text-left px-4 py-2.5 font-medium">Time</th>
                 <th className="text-left px-4 py-2.5 font-medium">Prompt</th>
                 <th className="text-left px-4 py-2.5 font-medium">Output</th>
+                <th className="text-left px-4 py-2.5 font-medium">Tags</th>
                 <th className="text-left px-4 py-2.5 font-medium">Model</th>
                 <th className="text-left px-4 py-2.5 font-medium">Status</th>
                 <th className="text-right px-4 py-2.5 font-medium">Credits</th>
@@ -196,10 +257,10 @@ function HistoryTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1a1a1a]">
-              {visible.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-10 text-center text-[#555] text-sm">No requests found.</td></tr>
+              {items.length === 0 && (
+                <tr><td colSpan={9} className="px-4 py-10 text-center text-[#555] text-sm">No requests found.</td></tr>
               )}
-              {visible.map((item) => {
+              {items.map((item) => {
                 const url = fileUrl(item);
                 return (
                   <tr key={item.request_id} className="hover:bg-surface-2/50 transition-colors">
@@ -229,6 +290,9 @@ function HistoryTab() {
                       ) : (
                         <span className="text-xs text-[#444]">—</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <TagEditor requestId={item.request_id} initialTags={item.tags ?? []} onSave={(tags) => handleTagSave(item.request_id, tags)} />
                     </td>
                     <td className="px-4 py-3 text-xs text-[#888] font-mono max-w-xs truncate">{item.model ?? "—"}</td>
                     <td className="px-4 py-3">

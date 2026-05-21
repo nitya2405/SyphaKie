@@ -181,12 +181,46 @@ def _serialize(h: Webhook) -> dict:
     }
 
 
+@router.post("/webhooks/deliveries/{delivery_id}/replay")
+async def replay_delivery(
+    delivery_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    delivery = (
+        db.query(WebhookDelivery)
+        .join(Webhook, WebhookDelivery.webhook_id == Webhook.id)
+        .filter(WebhookDelivery.id == delivery_id, Webhook.user_id == current_user.id)
+        .first()
+    )
+    if not delivery:
+        raise HTTPException(status_code=404, detail="Delivery not found.")
+
+    hook = db.query(Webhook).filter_by(id=delivery.webhook_id).first()
+    if not hook or not hook.is_active:
+        raise HTTPException(status_code=400, detail={"code": "WEBHOOK_INACTIVE", "message": "Webhook is not active."})
+
+    new_delivery = WebhookDelivery(
+        webhook_id=delivery.webhook_id,
+        event=delivery.event,
+        payload=delivery.payload,
+    )
+    db.add(new_delivery)
+    db.commit()
+    db.refresh(new_delivery)
+
+    import asyncio
+    asyncio.create_task(_deliver(str(new_delivery.id), hook.url, hook.secret, delivery.payload or {}))
+    return {"ok": True, "delivery_id": str(new_delivery.id)}
+
+
 def _ser_delivery(d: WebhookDelivery) -> dict:
     return {
         "id": str(d.id),
         "event": d.event,
         "status": d.status,
         "attempts": d.attempts,
+        "payload": d.payload,
         "last_response_code": d.last_response_code,
         "last_error": d.last_error,
         "delivered_at": d.delivered_at.isoformat() if d.delivered_at else None,

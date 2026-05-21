@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, JSON
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from sqlalchemy.sql import func
 import uuid
 from app.db.session import Base
@@ -21,6 +21,7 @@ class RequestRecord(Base):
     output_url = Column(String, nullable=True)
     credits_deducted = Column(Integer, nullable=False, default=0)
     latency_ms = Column(Integer, nullable=True)
+    tags = Column(ARRAY(String), nullable=True)
     error_message = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)

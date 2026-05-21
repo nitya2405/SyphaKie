@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.sql import func
 import uuid
@@ -16,4 +16,5 @@ class PromptTemplate(Base):
     model_id = Column(String, nullable=True)
     params = Column(JSONB, nullable=True)
     variables = Column(JSONB, nullable=True)   # {"var_name": {"label": str, "default": str}}
+    is_public = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

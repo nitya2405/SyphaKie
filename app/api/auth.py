@@ -158,6 +158,11 @@ class CreateKeyRequest(BaseModel):
     name: str = "My Key"
     scope: str | None = None        # null = all modalities
     expires_days: int | None = None  # null = never
+    monthly_credit_limit: int | None = None  # null = no limit
+
+
+class UpdateKeyRequest(BaseModel):
+    monthly_credit_limit: int | None = None
 
 
 @router.post("/auth/keys")
@@ -179,6 +184,8 @@ def create_api_key(
         name=body.name,
         scope=body.scope,
         expires_at=expires_at,
+        monthly_credit_limit=body.monthly_credit_limit,
+        credits_used_this_month=0,
     )
     db.add(key)
     db.commit()
@@ -189,6 +196,8 @@ def create_api_key(
         "prefix": key.key_prefix,
         "scope": key.scope,
         "expires_at": key.expires_at.isoformat() if key.expires_at else None,
+        "monthly_credit_limit": key.monthly_credit_limit,
+        "credits_used_this_month": key.credits_used_this_month,
     }
 
 
@@ -207,6 +216,8 @@ def list_api_keys(
                 "scope": k.scope,
                 "last_used": k.last_used.isoformat() if k.last_used else None,
                 "expires_at": k.expires_at.isoformat() if k.expires_at else None,
+                "monthly_credit_limit": k.monthly_credit_limit,
+                "credits_used_this_month": k.credits_used_this_month or 0,
                 "created_at": k.created_at.isoformat(),
             }
             for k in keys
@@ -239,6 +250,41 @@ def rotate_api_key(
     db.add(new_key)
     db.commit()
     return {"key": raw_key, "id": str(new_key.id), "prefix": new_key.key_prefix}
+
+
+@router.patch("/auth/keys/{key_id}")
+def update_api_key(
+    key_id: str,
+    body: UpdateKeyRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    key = db.query(ApiKey).filter_by(id=key_id, user_id=current_user.id, is_active=True).first()
+    if not key:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Key not found."})
+    if "monthly_credit_limit" in body.model_fields_set:
+        key.monthly_credit_limit = body.monthly_credit_limit
+    db.commit()
+    return {
+        "id": str(key.id),
+        "name": key.name or key.label,
+        "monthly_credit_limit": key.monthly_credit_limit,
+        "credits_used_this_month": key.credits_used_this_month or 0,
+    }
+
+
+@router.post("/auth/keys/{key_id}/reset-usage")
+def reset_key_usage(
+    key_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    key = db.query(ApiKey).filter_by(id=key_id, user_id=current_user.id, is_active=True).first()
+    if not key:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Key not found."})
+    key.credits_used_this_month = 0
+    db.commit()
+    return {"ok": True}
 
 
 @router.delete("/auth/keys/{key_id}")

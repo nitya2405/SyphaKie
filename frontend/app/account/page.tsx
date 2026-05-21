@@ -10,7 +10,7 @@ import {
   inviteMember, allotOrgCredits,
   OrgListItem, OrgMember, OrgDetail,
   getTelegramStatus, getTelegramToken, disconnectTelegram, TelegramStatus,
-  ApiError,
+  ApiError, apiFetch,
 } from "@/lib/api";
 
 // ── Org helpers ───────────────────────────────────────────────────────────────
@@ -781,7 +781,130 @@ function ProfileTab({ profile, setProfile }: { profile: UserProfile; setProfile:
       </section>
 
       <TelegramSection />
+      <ApiKeysSection />
     </div>
+  );
+}
+
+// ── API Keys Section ──────────────────────────────────────────────────────────
+
+interface ApiKeyInfo {
+  id: string;
+  name: string;
+  prefix: string;
+  scope: string | null;
+  monthly_credit_limit: number | null;
+  credits_used_this_month: number;
+  last_used: string | null;
+  expires_at: string | null;
+  created_at: string;
+}
+
+function ApiKeysSection() {
+  const [keys, setKeys] = useState<ApiKeyInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [limitInput, setLimitInput] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function load() {
+    try {
+      const d = await apiFetch<{ keys: ApiKeyInfo[] }>("/api/v1/auth/keys");
+      setKeys(d.keys);
+    } catch {}
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function saveLimit(keyId: string) {
+    setSaving(true);
+    const limit = limitInput.trim() === "" ? null : parseInt(limitInput, 10);
+    try {
+      await apiFetch(`/api/v1/auth/keys/${keyId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ monthly_credit_limit: isNaN(limit as number) ? null : limit }),
+      });
+      await load();
+      setEditingId(null);
+    } catch {}
+    setSaving(false);
+  }
+
+  async function resetUsage(keyId: string) {
+    try {
+      await apiFetch(`/api/v1/auth/keys/${keyId}/reset-usage`, { method: "POST" });
+      await load();
+    } catch {}
+  }
+
+  if (loading) return null;
+
+  return (
+    <section className="border border-border rounded-xl overflow-hidden">
+      <div className="bg-surface-2 px-4 py-2.5 border-b border-border">
+        <h2 className="text-sm font-medium text-muted">API Keys & Spending Limits</h2>
+        <p className="text-xs text-faint mt-0.5">Set monthly credit caps per key to prevent runaway usage.</p>
+      </div>
+      <div className="bg-surface divide-y divide-border-2">
+        {keys.length === 0 && <p className="px-4 py-4 text-sm text-muted">No API keys found.</p>}
+        {keys.map((k) => (
+          <div key={k.id} className="px-4 py-3 space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-primary truncate">{k.name}</p>
+                <p className="text-xs text-faint font-mono">{k.prefix}…</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-xs text-muted">
+                  {k.credits_used_this_month.toLocaleString()}
+                  {k.monthly_credit_limit ? ` / ${k.monthly_credit_limit.toLocaleString()}` : ""} cr this month
+                </p>
+                {k.monthly_credit_limit && (
+                  <div className="mt-1 h-1 w-24 rounded-full bg-[#1a1a1a] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-violet-500"
+                      style={{ width: `${Math.min(100, (k.credits_used_this_month / k.monthly_credit_limit) * 100)}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+            {editingId === k.id ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Limit (leave empty to remove)"
+                  value={limitInput}
+                  onChange={e => setLimitInput(e.target.value)}
+                  autoFocus
+                  className="flex-1 bg-surface-2 border border-border-2 text-primary rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-violet-500 placeholder-faint"
+                />
+                <button onClick={() => saveLimit(k.id)} disabled={saving} className="text-xs px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg disabled:opacity-40 transition-colors">
+                  {saving ? "…" : "Save"}
+                </button>
+                <button onClick={() => setEditingId(null)} className="text-xs text-faint hover:text-muted">Cancel</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setEditingId(k.id); setLimitInput(k.monthly_credit_limit?.toString() ?? ""); }}
+                  className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
+                >
+                  {k.monthly_credit_limit ? "Edit limit" : "Set limit"}
+                </button>
+                {k.credits_used_this_month > 0 && (
+                  <button onClick={() => resetUsage(k.id)} className="text-xs text-faint hover:text-muted transition-colors">
+                    Reset usage
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

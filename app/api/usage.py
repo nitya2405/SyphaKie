@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func, case, text
+from sqlalchemy import desc, func, case, or_
+from typing import List
+from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone
 from app.api.deps import get_current_user, get_db
 from app.models.request_record import RequestRecord
@@ -120,6 +122,25 @@ def get_latency_percentiles(days: int = Query(default=7, ge=1, le=90), provider:
     return {"count": row.count, "p50": row.p50, "p75": row.p75, "p90": row.p90, "p95": row.p95, "p99": row.p99, "min": row.min, "max": row.max}
 
 
+class TagsUpdate(BaseModel):
+    tags: List[str]
+
+
+@router.patch("/usage/{request_id}/tags")
+def update_request_tags(
+    request_id: str,
+    body: TagsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    record = db.query(RequestRecord).filter_by(id=request_id, user_id=current_user.id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Request not found.")
+    record.tags = [t.strip() for t in body.tags if t.strip()]
+    db.commit()
+    return {"tags": record.tags}
+
+
 @router.get("/usage")
 def get_usage(
     limit: int = Query(default=20, ge=1, le=100),
@@ -127,6 +148,8 @@ def get_usage(
     modality: str | None = Query(default=None),
     provider: str | None = Query(default=None),
     status: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    tag: str | None = Query(default=None),
     from_date: datetime | None = Query(default=None),
     to_date: datetime | None = Query(default=None),
     current_user: User = Depends(get_current_user),
@@ -144,6 +167,16 @@ def get_usage(
         query = query.filter(RequestRecord.created_at >= from_date)
     if to_date:
         query = query.filter(RequestRecord.created_at <= to_date)
+    if search:
+        pattern = f"%{search}%"
+        query = query.filter(
+            or_(
+                RequestRecord.output_content.ilike(pattern),
+                RequestRecord.input_payload["prompt"].astext.ilike(pattern),
+            )
+        )
+    if tag:
+        query = query.filter(RequestRecord.tags.any(tag))
 
     total = query.count()
     records = query.order_by(desc(RequestRecord.created_at)).offset(offset).limit(limit).all()
@@ -164,6 +197,7 @@ def get_usage(
                 "error_message": r.error_message,
                 "prompt": r.input_payload.get("prompt") if r.input_payload else None,
                 "output_content": r.output_content,
+                "tags": r.tags or [],
                 "created_at": r.created_at.isoformat() if r.created_at else None,
                 "output_url": r.output_url,
                 "output_path": r.output_path,
