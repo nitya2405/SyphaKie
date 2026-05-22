@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func, case, or_
+from sqlalchemy import desc, func, case, or_, cast, String
 from typing import List
 from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone
@@ -172,7 +172,7 @@ def get_usage(
         query = query.filter(
             or_(
                 func.lower(RequestRecord.output_content).like(pat),
-                func.lower(RequestRecord.input_payload["prompt"].astext).like(pat),
+                func.lower(cast(RequestRecord.input_payload["prompt"], String)).like(pat),
             )
         )
     if tag:
