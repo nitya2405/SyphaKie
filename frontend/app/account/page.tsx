@@ -781,8 +781,125 @@ function ProfileTab({ profile, setProfile }: { profile: UserProfile; setProfile:
       </section>
 
       <TelegramSection />
+      <AutoTopupSection />
       <ApiKeysSection />
     </div>
+  );
+}
+
+// ── Auto Top-up Section ───────────────────────────────────────────────────────
+
+const CREDIT_PACKS = [
+  { credits: 500,   label: "500 credits — $5" },
+  { credits: 1500,  label: "1,500 credits — $12" },
+  { credits: 5000,  label: "5,000 credits — $35" },
+  { credits: 15000, label: "15,000 credits — $90" },
+];
+
+function AutoTopupSection() {
+  const [enabled, setEnabled] = useState(false);
+  const [threshold, setThreshold] = useState("");
+  const [amount, setAmount] = useState("500");
+  const [hasPaymentMethod, setHasPaymentMethod] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    apiFetch<{ enabled: boolean; threshold: number | null; amount: number | null; has_payment_method: boolean }>("/api/v1/billing/auto-topup")
+      .then(d => {
+        setEnabled(d.enabled);
+        setThreshold(d.threshold?.toString() ?? "");
+        setAmount(d.amount?.toString() ?? "500");
+        setHasPaymentMethod(d.has_payment_method);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function save() {
+    setSaving(true); setMsg("");
+    try {
+      const thresh = parseInt(threshold, 10);
+      const amt = parseInt(amount, 10);
+      if (enabled && (isNaN(thresh) || isNaN(amt))) {
+        setMsg("Please enter valid threshold and amount."); setSaving(false); return;
+      }
+      await apiFetch("/api/v1/billing/auto-topup", {
+        method: "PATCH",
+        body: JSON.stringify(enabled ? { threshold: thresh, amount: amt } : { threshold: null, amount: null }),
+      });
+      setMsg(enabled ? "Auto top-up enabled." : "Auto top-up disabled.");
+      setTimeout(() => setMsg(""), 3000);
+    } catch (err) {
+      setMsg(err instanceof ApiError ? err.message : "Failed to save.");
+    }
+    setSaving(false);
+  }
+
+  if (loading) return null;
+
+  return (
+    <section className="border border-border rounded-xl overflow-hidden">
+      <div className="bg-surface-2 px-4 py-2.5 border-b border-border flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-medium text-muted">Auto Top-up</h2>
+          <p className="text-xs text-faint mt-0.5">Automatically recharge when balance drops below a threshold.</p>
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <span className="text-xs text-faint">{enabled ? "On" : "Off"}</span>
+          <div
+            onClick={() => setEnabled(v => !v)}
+            className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${enabled ? "bg-violet-600" : "bg-[#2a2a2a]"}`}
+          >
+            <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-4" : "translate-x-0.5"}`} />
+          </div>
+        </label>
+      </div>
+      <div className="px-4 py-4 bg-surface space-y-4">
+        {enabled && (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-faint mb-1">Recharge when below</label>
+              <div className="relative">
+                <input
+                  type="number" min="0" value={threshold}
+                  onChange={e => setThreshold(e.target.value)}
+                  placeholder="e.g. 200"
+                  className="w-full bg-surface-2 border border-border-2 text-primary rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-violet-500 placeholder-faint pr-12"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-faint">credits</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-faint mb-1">Add this pack</label>
+              <select
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                className="w-full bg-surface-2 border border-border-2 text-muted rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-violet-500"
+              >
+                {CREDIT_PACKS.map(p => <option key={p.credits} value={p.credits}>{p.label}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+        {enabled && !hasPaymentMethod && (
+          <p className="text-xs text-amber-400/80 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+            No saved payment method. Complete a credit purchase first — your card will be saved for future auto top-ups.
+          </p>
+        )}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={save}
+            disabled={saving}
+            className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm rounded-lg disabled:opacity-40 transition-colors"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+          {msg && <span className={`text-sm ${msg.includes("Failed") || msg.includes("valid") ? "text-red-400" : "text-emerald-400"}`}>{msg}</span>}
+        </div>
+      </div>
+    </section>
   );
 }
 

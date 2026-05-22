@@ -704,15 +704,122 @@ function GalleryTab() {
   );
 }
 
+// ── Cache Tab ─────────────────────────────────────────────────────────────────
+
+interface CacheStats {
+  total_entries: number;
+  total_hits: number;
+  total_credits_saved: number;
+}
+
+interface CacheEntry {
+  prompt: string;
+  modality: string;
+  provider: string | null;
+  model_id: string | null;
+  hit_count: number;
+  credits_saved: number;
+  last_hit_at: string | null;
+}
+
+function CacheTab() {
+  const [stats, setStats] = useState<CacheStats | null>(null);
+  const [entries, setEntries] = useState<CacheEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      apiFetch<CacheStats>("/api/v1/cache/stats"),
+      apiFetch<{ entries: CacheEntry[] }>("/api/v1/cache/entries?limit=20"),
+    ])
+      .then(([s, e]) => { setStats(s); setEntries(e.entries); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-lg font-semibold text-primary">Prompt Cache</h2>
+        <p className="text-xs text-[#555]">Repeated identical prompts are served from cache — saving credits and latency.</p>
+      </div>
+
+      {loading ? (
+        <div className="text-sm text-[#888] py-12 text-center">Loading cache stats…</div>
+      ) : stats ? (
+        <>
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="border border-border rounded-xl bg-surface-2 px-4 py-4">
+              <p className="text-xs text-[#888] mb-1">Cached Prompts</p>
+              <p className="text-2xl font-semibold text-primary">{stats.total_entries.toLocaleString()}</p>
+            </div>
+            <div className="border border-border rounded-xl bg-surface-2 px-4 py-4">
+              <p className="text-xs text-[#888] mb-1">Total Cache Hits</p>
+              <p className="text-2xl font-semibold text-primary">{stats.total_hits.toLocaleString()}</p>
+            </div>
+            <div className="border border-border rounded-xl bg-surface-2 px-4 py-4">
+              <p className="text-xs text-[#888] mb-1">Credits Saved</p>
+              <p className="text-2xl font-semibold text-emerald-400">{stats.total_credits_saved.toLocaleString()}</p>
+            </div>
+          </div>
+
+          {entries.length > 0 ? (
+            <div className="border border-border rounded-xl overflow-hidden bg-surface-2">
+              <div className="px-4 py-3 border-b border-border">
+                <p className="text-xs font-medium text-[#888]">Top cached prompts</p>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-[#555] bg-surface border-b border-border uppercase tracking-wide">
+                    <th className="text-left px-4 py-2.5 font-medium">Prompt</th>
+                    <th className="text-left px-4 py-2.5 font-medium">Model</th>
+                    <th className="text-right px-4 py-2.5 font-medium">Hits</th>
+                    <th className="text-right px-4 py-2.5 font-medium">Credits Saved</th>
+                    <th className="text-right px-4 py-2.5 font-medium">Last Hit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#1a1a1a]">
+                  {entries.map((e, i) => (
+                    <tr key={i} className="hover:bg-surface-2/50 transition-colors">
+                      <td className="px-4 py-3 max-w-xs">
+                        <p className="text-xs text-[#ccc] truncate" title={e.prompt}>{e.prompt}</p>
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium mt-0.5 inline-block ${MODALITY_COLORS[e.modality] ?? "bg-[#222] text-[#888]"}`}>
+                          {e.modality}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-[#888] font-mono">{e.model_id ?? "—"}</td>
+                      <td className="px-4 py-3 text-right text-xs font-semibold text-primary">{e.hit_count}</td>
+                      <td className="px-4 py-3 text-right text-xs font-mono text-emerald-400">{e.credits_saved}</td>
+                      <td className="px-4 py-3 text-right text-xs text-[#555]">
+                        {e.last_hit_at ? fmtDate(e.last_hit_at) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-16 text-[#555] text-sm">
+              No cached prompts yet. <a href="/generate" className="text-violet-400 hover:underline">Generate something</a> and re-run it to see cache hits.
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="text-sm text-[#555] py-12 text-center">Could not load cache stats.</div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-type ActivityTab = "history" | "analytics" | "gallery";
+type ActivityTab = "history" | "analytics" | "gallery" | "cache";
 
 function ActivityContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tabParam = searchParams.get("tab");
-  const tab: ActivityTab = (["history", "analytics", "gallery"] as ActivityTab[]).includes(tabParam as ActivityTab)
+  const tab: ActivityTab = (["history", "analytics", "gallery", "cache"] as ActivityTab[]).includes(tabParam as ActivityTab)
     ? (tabParam as ActivityTab)
     : "history";
 
@@ -734,6 +841,7 @@ function ActivityContent() {
             { id: "history",   label: "History" },
             { id: "analytics", label: "Analytics" },
             { id: "gallery",   label: "Gallery" },
+            { id: "cache",     label: "Cache" },
           ] as { id: ActivityTab; label: string }[]).map((t) => (
             <button
               key={t.id}
@@ -750,6 +858,7 @@ function ActivityContent() {
         {tab === "history"   && <HistoryTab />}
         {tab === "analytics" && <AnalyticsTab />}
         {tab === "gallery"   && <GalleryTab />}
+        {tab === "cache"     && <CacheTab />}
       </div>
     </SidebarLayout>
   );

@@ -17,6 +17,7 @@ class User(Base):
     role = Column(String, nullable=False, default="user")  # "user" | "admin"
     is_active = Column(Boolean, nullable=False, default=True)
     stripe_customer_id = Column(String, nullable=True)
+    stripe_payment_method_id = Column(String, nullable=True)
     org_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

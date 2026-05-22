@@ -12,6 +12,7 @@ import {
   fetchHistory,
   fetchOutput,
   uploadFile,
+  apiFetch,
   GenerateResponse,
   JobResult,
   HistoryRecord,
@@ -776,8 +777,176 @@ function GenerateContent() {
             </div>
           )}
         </div>
+
+        {/* ── Batch panel ─────────────────────────────────────── */}
+        <BatchPanel modality={modality} mode={mode} selectedModel={selectedModel} onBalanceRefresh={loadBalance} />
       </div>
     </SidebarLayout>
+  );
+}
+
+// ── Batch Panel ───────────────────────────────────────────────────────────────
+
+interface BatchJob {
+  id: string; status: string; prompt: string | null;
+  output_content: string | null; output_url: string | null;
+  modality: string | null; error_message: string | null;
+  credits_used: number | null;
+}
+
+function BatchPanel({ modality, mode, selectedModel, onBalanceRefresh }: {
+  modality: string; mode: string; selectedModel: string; onBalanceRefresh: () => void;
+}) {
+  const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+  const [open, setOpen] = useState(false);
+  const [promptsText, setPromptsText] = useState("");
+  const [running, setRunning] = useState(false);
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [jobs, setJobs] = useState<BatchJob[]>([]);
+  const [batchStatus, setBatchStatus] = useState<string>("");
+  const [error, setError] = useState("");
+  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
+
+  async function pollBatch(id: string) {
+    try {
+      const d = await apiFetch<{ batch: { status: string; completed: number; failed: number; total: number }; jobs: BatchJob[] }>(
+        `/api/v1/jobs/batch/${id}`
+      );
+      setJobs(d.jobs);
+      setBatchStatus(d.batch.status);
+      if (d.batch.status === "running") {
+        pollRef.current = setTimeout(() => pollBatch(id), 2000);
+      } else {
+        setRunning(false);
+        onBalanceRefresh();
+      }
+    } catch {
+      setRunning(false);
+    }
+  }
+
+  async function submit() {
+    const prompts = promptsText.split("\n").map(p => p.trim()).filter(Boolean);
+    if (!prompts.length) return;
+    setRunning(true); setError(""); setJobs([]); setBatchId(null); setBatchStatus("running");
+    try {
+      const res = await apiFetch<{ batch_id: string; job_ids: string[]; total: number }>("/api/v1/generate/batch", {
+        method: "POST",
+        body: JSON.stringify({
+          prompts,
+          modality,
+          mode,
+          ...(mode === "manual" && selectedModel ? { model: selectedModel } : {}),
+        }),
+      });
+      setBatchId(res.batch_id);
+      setJobs(res.job_ids.map((id, i) => ({
+        id, status: "queued", prompt: prompts[i] ?? null,
+        output_content: null, output_url: null, modality, error_message: null, credits_used: null,
+      })));
+      pollRef.current = setTimeout(() => pollBatch(res.batch_id), 2000);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Batch failed.");
+      setRunning(false);
+    }
+  }
+
+  function reset() { setBatchId(null); setJobs([]); setBatchStatus(""); setError(""); setRunning(false); }
+
+  const prompts = promptsText.split("\n").filter(p => p.trim()).length;
+  const done = jobs.filter(j => j.status === "success" || j.status === "failed").length;
+  const succeeded = jobs.filter(j => j.status === "success").length;
+
+  return (
+    <div className="w-full max-w-2xl pb-12">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="flex items-center gap-2 text-xs text-faint hover:text-muted transition-colors"
+      >
+        <svg className={`w-3.5 h-3.5 transition-transform ${open ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        <span className="font-semibold uppercase tracking-wider">Batch generation</span>
+        <span className="text-faint font-normal normal-case tracking-normal">— run multiple prompts at once</span>
+      </button>
+
+      {open && (
+        <div className="mt-4 space-y-4">
+          {!batchId ? (
+            <>
+              <textarea
+                value={promptsText}
+                onChange={e => setPromptsText(e.target.value)}
+                placeholder={"Prompt 1\nPrompt 2\nPrompt 3…"}
+                rows={6}
+                className="w-full bg-surface border border-border text-primary text-sm rounded-xl px-4 py-3 resize-none focus:outline-none focus:border-violet-500/60 placeholder-faint"
+              />
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={submit}
+                  disabled={running || prompts === 0}
+                  className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-sm rounded-lg transition-colors flex items-center gap-2"
+                >
+                  {running && <Spinner className="h-3.5 w-3.5" />}
+                  Run {prompts > 0 ? prompts : ""} prompts
+                </button>
+                {prompts > 0 && <span className="text-xs text-faint">{prompts} prompt{prompts !== 1 ? "s" : ""} · {modality} · {mode}</span>}
+              </div>
+              {error && <p className="text-xs text-red-400">{error}</p>}
+            </>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-faint">{done}/{jobs.length} done</span>
+                  {batchStatus === "running" && <Spinner className="h-3.5 w-3.5 text-violet-400" />}
+                  {batchStatus === "done" && <span className="text-xs text-emerald-400">All done</span>}
+                  {batchStatus === "partial" && <span className="text-xs text-amber-400">{jobs.length - succeeded} failed</span>}
+                </div>
+                <button onClick={reset} className="text-xs text-faint hover:text-muted transition-colors">New batch</button>
+              </div>
+
+              <div className={`${card} divide-y divide-[#1E1F28]`}>
+                {jobs.map((job, i) => (
+                  <div key={job.id} className="px-4 py-3 space-y-1">
+                    <div className="flex items-start gap-2">
+                      <span className="text-xs text-faint w-5 shrink-0 pt-0.5">{i + 1}.</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-[#aaa] truncate">{job.prompt ?? "—"}</p>
+                        {job.status === "queued" && <span className="text-xs text-faint">queued…</span>}
+                        {job.status === "running" && <span className="text-xs text-violet-400 flex items-center gap-1"><Spinner className="h-3 w-3" /> generating…</span>}
+                        {job.status === "success" && job.output_content && (
+                          <p className="text-xs text-[#ccc] mt-1 line-clamp-2">{job.output_content}</p>
+                        )}
+                        {job.status === "success" && job.output_url && !job.output_content && (
+                          <a href={`${BASE}${job.output_url.startsWith("/") ? "" : "/"}${job.output_url}`} target="_blank" rel="noopener noreferrer" className="text-xs text-violet-400 hover:text-violet-300 mt-1 inline-block">
+                            View output ↗
+                          </a>
+                        )}
+                        {job.status === "failed" && <p className="text-xs text-red-400 mt-0.5">{job.error_message ?? "Failed"}</p>}
+                      </div>
+                      <div className="shrink-0 flex items-center gap-2">
+                        {job.credits_used != null && job.status === "success" && (
+                          <span className="text-xs text-faint font-mono">{job.credits_used}cr</span>
+                        )}
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                          job.status === "success" ? "bg-emerald-500/20 text-emerald-400" :
+                          job.status === "failed"  ? "bg-red-500/20 text-red-400" :
+                          job.status === "running" ? "bg-violet-500/20 text-violet-400" :
+                          "bg-[#222] text-[#555]"
+                        }`}>{job.status}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

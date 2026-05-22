@@ -69,3 +69,29 @@ def get_job(
     if not job:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Job not found."})
     return {"job": _serialize(job)}
+
+
+@router.get("/jobs/batch/{batch_id}")
+def get_batch(
+    batch_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.batch import Batch
+    batch = db.query(Batch).filter(
+        Batch.id == uuid.UUID(batch_id), Batch.user_id == current_user.id
+    ).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Batch not found."})
+    jobs = db.query(Job).filter(Job.batch_id == batch.id).order_by(Job.created_at.asc()).all()
+    return {
+        "batch": {
+            "id": str(batch.id),
+            "total": batch.total,
+            "completed": batch.completed,
+            "failed": batch.failed,
+            "status": batch.status,
+            "created_at": batch.created_at.isoformat(),
+        },
+        "jobs": [_serialize(j) for j in jobs],
+    }
