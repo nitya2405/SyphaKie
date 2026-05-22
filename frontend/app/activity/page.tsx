@@ -565,6 +565,7 @@ function GalleryTab() {
   const [items, setItems] = useState<RequestItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "image" | "video" | "audio">("all");
+  const [tagFilter, setTagFilter] = useState("");
   const [selected, setSelected] = useState<RequestItem | null>(null);
 
   useEffect(() => {
@@ -580,12 +581,21 @@ function GalleryTab() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const visible = filter === "all" ? items : items.filter((i) => i.modality === filter);
+  const visible = items
+    .filter((i) => filter === "all" || i.modality === filter)
+    .filter((i) => !tagFilter.trim() || (i.tags ?? []).some((t) => t.toLowerCase().includes(tagFilter.toLowerCase())));
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="text-lg font-semibold text-primary">Gallery</h2>
+      <div className="flex flex-wrap items-center gap-3 mb-5">
+        <h2 className="text-lg font-semibold text-primary flex-1">Gallery</h2>
+        <input
+          type="text"
+          placeholder="Filter by tag…"
+          value={tagFilter}
+          onChange={(e) => setTagFilter(e.target.value)}
+          className="bg-surface-2/50 border border-border-2 text-primary text-xs rounded-lg px-2.5 py-1.5 w-32 focus:outline-none focus:border-violet-500 placeholder-[#444]"
+        />
         <div className="flex gap-1.5">
           {(["all", "image", "video", "audio"] as const).map((f) => (
             <button
