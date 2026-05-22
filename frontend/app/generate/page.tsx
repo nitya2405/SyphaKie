@@ -466,10 +466,54 @@ function GenerateContent() {
               </div>
             </div>
           </div>
-          {/* Template picker */}
-          {templates.length > 0 && (
-            <div className="w-full" ref={tplRef}>
-              <div className="relative inline-block">
+          {/* Controls — secondary, below prompt */}
+          <div className="w-full space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={modality}
+                onChange={e => handleModalityChange(e.target.value as Modality)}
+                className={ctrl}
+              >
+                <option value="text">Text / Chat</option>
+                <option value="image">Image</option>
+                <option value="video">Video</option>
+                <option value="audio">Audio</option>
+              </select>
+
+              <select
+                value={taskType}
+                onChange={e => { setTaskType(e.target.value); setSelectedModel(""); }}
+                className={ctrl}
+              >
+                {TASK_TYPES[modality].map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+
+              <select
+                value={mode}
+                onChange={e => handleModeChange(e.target.value as Mode)}
+                className={ctrl}
+              >
+                <option value="auto">Auto mode</option>
+                <option value="manual">Manual mode</option>
+              </select>
+
+              {mode === "manual" && models.length > 0 && (
+                <select
+                  value={selectedModel}
+                  onChange={e => setSelectedModel(e.target.value)}
+                  className={`${ctrl} flex-1 min-w-[200px]`}
+                >
+                  {models.map(m => (
+                    <option key={m.model_id} value={m.model_id}>{m.display_name} — {m.provider}</option>
+                  ))}
+                </select>
+              )}
+              {mode === "manual" && models.length === 0 && (
+                <span className="text-xs text-faint py-2 px-1">Loading models…</span>
+              )}
+
+              {/* Templates button */}
+              <div className="relative" ref={tplRef}>
                 <button
                   onClick={() => setTplOpen(v => !v)}
                   className="text-xs px-3 py-1.5 bg-surface border border-border text-muted rounded-lg hover:border-violet-500/40 hover:text-primary transition-colors flex items-center gap-1.5"
@@ -518,80 +562,32 @@ function GenerateContent() {
                   </div>
                 )}
               </div>
-
-              {/* Variable fields */}
-              {activeTpl && Object.keys(tplVars).length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2 items-end">
-                  {Object.entries(tplVars).map(([key, val]) => (
-                    <div key={key} className="flex flex-col gap-0.5">
-                      <label className="text-[10px] text-faint uppercase tracking-wide">
-                        {activeTpl.variables?.[key]?.label ?? key}
-                      </label>
-                      <input
-                        value={val}
-                        onChange={e => setTplVars(prev => ({ ...prev, [key]: e.target.value }))}
-                        placeholder={activeTpl.variables?.[key]?.default ?? key}
-                        className="bg-surface border border-border text-primary text-xs rounded-lg px-2.5 py-1.5 w-36 focus:outline-none focus:border-violet-500/60"
-                      />
-                    </div>
-                  ))}
-                  <button
-                    onClick={renderTplPrompt}
-                    className="text-xs px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors"
-                  >
-                    Apply
-                  </button>
-                </div>
-              )}
             </div>
-          )}
 
-          {/* Controls — secondary, below prompt */}
-          <div className="w-full space-y-3">
-            <div className="flex flex-wrap gap-2">
-              <select
-                value={modality}
-                onChange={e => handleModalityChange(e.target.value as Modality)}
-                className={ctrl}
-              >
-                <option value="text">Text / Chat</option>
-                <option value="image">Image</option>
-                <option value="video">Video</option>
-                <option value="audio">Audio</option>
-              </select>
-
-              <select
-                value={taskType}
-                onChange={e => { setTaskType(e.target.value); setSelectedModel(""); }}
-                className={ctrl}
-              >
-                {TASK_TYPES[modality].map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-
-              <select
-                value={mode}
-                onChange={e => handleModeChange(e.target.value as Mode)}
-                className={ctrl}
-              >
-                <option value="auto">Auto mode</option>
-                <option value="manual">Manual mode</option>
-              </select>
-
-              {mode === "manual" && models.length > 0 && (
-                <select
-                  value={selectedModel}
-                  onChange={e => setSelectedModel(e.target.value)}
-                  className={`${ctrl} flex-1 min-w-[200px]`}
+            {/* Template variable fields */}
+            {activeTpl && Object.keys(tplVars).length > 0 && (
+              <div className="flex flex-wrap gap-2 items-end">
+                {Object.entries(tplVars).map(([key, val]) => (
+                  <div key={key} className="flex flex-col gap-0.5">
+                    <label className="text-[10px] text-faint uppercase tracking-wide">
+                      {activeTpl.variables?.[key]?.label ?? key}
+                    </label>
+                    <input
+                      value={val}
+                      onChange={e => setTplVars(prev => ({ ...prev, [key]: e.target.value }))}
+                      placeholder={activeTpl.variables?.[key]?.default ?? key}
+                      className="bg-surface border border-border text-primary text-xs rounded-lg px-2.5 py-1.5 w-36 focus:outline-none focus:border-violet-500/60"
+                    />
+                  </div>
+                ))}
+                <button
+                  onClick={renderTplPrompt}
+                  className="text-xs px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg transition-colors"
                 >
-                  {models.map(m => (
-                    <option key={m.model_id} value={m.model_id}>{m.display_name} — {m.provider}</option>
-                  ))}
-                </select>
-              )}
-              {mode === "manual" && models.length === 0 && (
-                <span className="text-xs text-faint py-2 px-1">Loading models…</span>
-              )}
-            </div>
+                  Apply
+                </button>
+              </div>
+            )}
 
             {/* Tertiary options */}
             <div className="flex items-center gap-5 flex-wrap">
