@@ -25,9 +25,8 @@ function IconCoins()   { return <svg className="w-[18px] h-[18px]" fill="none" s
 
 const NAV = [
   { href: "/generate",  label: "Generate",  icon: <IconBolt />   },
-  { href: "/models",    label: "Models",    icon: <IconGrid />   },
-  { href: "/pipelines", label: "Pipelines", icon: <IconFlow />   },
   { href: "/activity",  label: "Activity",  icon: <IconChart />  },
+  { href: "/models",    label: "Models",    icon: <IconGrid />   },
   { href: "/webhooks",  label: "Webhooks",  icon: <IconWebhook />},
   { href: "/account",   label: "Account",   icon: <IconUser />   },
 ];

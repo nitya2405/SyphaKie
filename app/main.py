@@ -48,10 +48,12 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    allowed_origins = [o.strip() for o in settings.ALLOWED_ORIGINS.split(",") if o.strip()]
+
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
+        allow_origins=allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -76,7 +78,8 @@ def create_app() -> FastAPI:
             "name": current_user.name,
             "phone_number": current_user.phone_number,
             "role": current_user.role,
-            "api_key": key_record.key_value if key_record else None,
+            # Return prefix only — full key is shown once at signup/login and stored by the client.
+            "api_key": (key_record.key_prefix + "…") if key_record else None,
             "api_key_prefix": key_record.key_prefix if key_record else None,
         }
 

@@ -698,9 +698,6 @@ function ProfileTab({ profile, setProfile }: { profile: UserProfile; setProfile:
   const [phone, setPhone] = useState(profile.phone_number ?? "");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
-  const [keyVisible, setKeyVisible] = useState(false);
-  const [copied, setCopied] = useState(false);
-
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true); setSaveMsg("");
@@ -711,15 +708,6 @@ function ProfileTab({ profile, setProfile }: { profile: UserProfile; setProfile:
       setTimeout(() => setSaveMsg(""), 2500);
     } catch { setSaveMsg("Failed to save. Try again."); }
     finally { setSaving(false); }
-  }
-
-  async function handleCopyKey() {
-    if (!profile?.api_key) return;
-    try { await navigator.clipboard.writeText(profile.api_key); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch {}
-  }
-
-  function maskedKey(key: string) {
-    return key.slice(0, 8) + "•".repeat(Math.max(0, key.length - 12)) + key.slice(-4);
   }
 
   return (
@@ -762,17 +750,10 @@ function ProfileTab({ profile, setProfile }: { profile: UserProfile; setProfile:
             <>
               <div className="flex items-center gap-2">
                 <code className="flex-1 font-mono text-sm bg-surface-2 border border-border-2 rounded-lg px-3 py-2 text-muted overflow-x-auto">
-                  {keyVisible ? profile.api_key : maskedKey(profile.api_key)}
+                  {profile.api_key}
                 </code>
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setKeyVisible((v) => !v)} className="text-xs px-3 py-1.5 border border-border-2 text-muted rounded-lg hover:border-border hover:text-primary transition-colors">
-                  {keyVisible ? "Hide" : "Reveal"}
-                </button>
-                <button onClick={handleCopyKey} className="text-xs px-3 py-1.5 border border-border-2 text-muted rounded-lg hover:border-border hover:text-primary transition-colors">
-                  {copied ? "Copied!" : "Copy"}
-                </button>
-              </div>
+              <p className="text-xs text-faint">Your full key was shown once when you signed in. To get a new full key, rotate it below.</p>
             </>
           ) : (
             <p className="text-sm text-muted">No API key found. This account was created before key storage was enabled.</p>

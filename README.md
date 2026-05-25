@@ -25,6 +25,38 @@
 
 ---
 
+## Quick Start
+
+> Full setup details are in [Getting Started](#getting-started). This is the minimal path.
+
+```bash
+# 1. Clone and install backend
+git clone <repo-url> && cd syphakie
+python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+# 2. Configure
+cp .env.example .env
+# → Edit .env: set DATABASE_URL and at least one provider key (e.g. OPENAI_API_KEY)
+
+# 3. Create database and run migrations
+psql -U postgres -c "CREATE USER syphakie WITH PASSWORD 'syphakie';"
+psql -U postgres -c "CREATE DATABASE syphakie OWNER syphakie;"
+python -m alembic upgrade head
+
+# 4. Install and configure frontend
+cd frontend && npm install && cp .env.example .env.local && cd ..
+
+# 5. Run (two terminals)
+python -m uvicorn app.main:app --reload --port 8000   # Terminal 1
+cd frontend && npm run dev                             # Terminal 2
+```
+
+Open **http://localhost:3000** — sign up, and start generating.  
+API docs: **http://localhost:8000/docs**
+
+---
+
 ## Features
 
 ### Core Generation
@@ -440,9 +472,10 @@ python -m alembic upgrade head
 ```bash
 cd frontend
 npm install
+cp .env.example .env.local   # then edit NEXT_PUBLIC_API_URL if needed
 ```
 
-Create `frontend/.env.local`:
+`frontend/.env.local` (default values work for local dev):
 ```
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
@@ -451,24 +484,37 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `OPENAI_API_KEY` | Optional | OpenAI API key |
-| `ANTHROPIC_API_KEY` | Optional | Anthropic API key |
-| `GOOGLE_API_KEY` | Optional | Google Gemini API key |
-| `FAL_API_KEY` | Optional | FAL.ai API key (images, video) |
-| `STABILITY_API_KEY` | Optional | Stability AI API key |
-| `ELEVENLABS_API_KEY` | Optional | ElevenLabs API key (audio) |
-| `QWEN_API_KEY` | Optional | Alibaba Qwen API key |
-| `XAI_API_KEY` | Optional | xAI (Grok) API key |
-| `OUTPUT_DIR` | No | Directory for media files (default: `outputs`) |
-| `BASE_URL` | No | Backend base URL (default: `http://localhost:8000`) |
-| `DEFAULT_CREDITS` | No | Starting credits for new users (default: `1000`) |
-| `TELEGRAM_BOT_TOKEN` | Optional | Bot token from @BotFather |
-| `TELEGRAM_BOT_USERNAME` | Optional | Bot username without @ |
-| `TELEGRAM_WEBHOOK_URL` | Optional | Public HTTPS URL for Telegram webhooks (leave empty for polling) |
-| `TELEGRAM_WEBHOOK_SECRET` | Optional | HMAC secret for webhook verification |
+### Backend (`.env`)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DATABASE_URL` | **Yes** | — | PostgreSQL connection string |
+| `ALLOWED_ORIGINS` | No | `http://localhost:3000` | Comma-separated CORS origins. Set to your frontend URL in production. |
+| `OUTPUT_DIR` | No | `outputs` | Directory where generated media files are saved |
+| `BASE_URL` | No | `http://localhost:8000` | Backend public URL (used in Telegram deep-links) |
+| `DEFAULT_CREDITS` | No | `1000` | Starting credit balance for new users |
+| `OPENAI_API_KEY` | Optional | — | OpenAI — enables GPT-4o, DALL-E 3, Whisper |
+| `ANTHROPIC_API_KEY` | Optional | — | Anthropic — enables Claude models |
+| `GOOGLE_API_KEY` | Optional | — | Google — enables Gemini + Imagen |
+| `FAL_API_KEY` | Optional | — | FAL.ai — enables Flux, Kling, LTX video, CogVideo |
+| `STABILITY_API_KEY` | Optional | — | Stability AI — enables SDXL / SD3 |
+| `ELEVENLABS_API_KEY` | Optional | — | ElevenLabs — enables TTS and voice cloning |
+| `QWEN_API_KEY` | Optional | — | Alibaba Qwen models |
+| `XAI_API_KEY` | Optional | — | xAI Grok models |
+| `STRIPE_SECRET_KEY` | Optional | — | Stripe secret key — leave blank to disable billing |
+| `STRIPE_WEBHOOK_SECRET` | Optional | — | Stripe webhook signing secret (`whsec_…`) |
+| `TELEGRAM_BOT_TOKEN` | Optional | — | Bot token from @BotFather — leave blank to disable bot |
+| `TELEGRAM_BOT_USERNAME` | Optional | — | Bot username without `@` |
+| `TELEGRAM_WEBHOOK_URL` | Optional | — | Public HTTPS URL for Telegram webhooks (leave empty to use polling) |
+| `TELEGRAM_WEBHOOK_SECRET` | Optional | — | HMAC secret for Telegram webhook verification |
+
+> **Minimum to get started:** `DATABASE_URL` + at least one provider key (e.g. `OPENAI_API_KEY`).
+
+### Frontend (`frontend/.env.local`)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `NEXT_PUBLIC_API_URL` | No | `http://localhost:8000` | Backend URL. Change to your production API URL when deploying. |
 
 ---
 

@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import List
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import update as _sa_update
 from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_current_api_key, get_db
 from app.schemas.generate import GenerateRequest, GenerateResponse
@@ -94,14 +95,22 @@ async def _run_batch_job(job_id: str, batch_id: str, user_id: str, request: Gene
     finally:
         try:
             from app.models.batch import Batch
+            # Atomic increment — avoids read-modify-write race when jobs finish concurrently.
+            succeeded = job.status == "success" if job else False
+            db.execute(
+                _sa_update(Batch)
+                .where(Batch.id == _uuid.UUID(batch_id))
+                .values(
+                    completed=Batch.completed + (1 if succeeded else 0),
+                    failed=Batch.failed + (0 if succeeded else 1),
+                )
+                .execution_options(synchronize_session=False)
+            )
+            db.commit()
+            # Re-read to check whether all jobs are now done and update status.
             batch = db.query(Batch).filter(Batch.id == _uuid.UUID(batch_id)).first()
-            if batch:
-                jobs = db.query(Job).filter(Job.batch_id == _uuid.UUID(batch_id)).all()
-                batch.completed = sum(1 for j in jobs if j.status == "success")
-                batch.failed = sum(1 for j in jobs if j.status == "failed")
-                done = batch.completed + batch.failed
-                if done >= batch.total:
-                    batch.status = "partial" if batch.failed > 0 else "done"
+            if batch and (batch.completed + batch.failed) >= batch.total:
+                batch.status = "partial" if batch.failed > 0 else "done"
                 db.commit()
         except Exception:
             pass

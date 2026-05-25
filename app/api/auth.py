@@ -117,8 +117,15 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
             "message": "No active API key found for this account.",
         })
 
+    if not api_key_record.key_value:
+        # Key was created before key_value storage was added — user must rotate.
+        raise HTTPException(status_code=409, detail={
+            "code": "KEY_ROTATE_REQUIRED",
+            "message": "Your API key predates secure storage. Please rotate it from the Account page.",
+        })
+
     return LoginResponse(
-        api_key=api_key_record.key_value or api_key_record.key_prefix + "...",
+        api_key=api_key_record.key_value,
         user_id=str(user.id),
         email=user.email,
         name=user.name,

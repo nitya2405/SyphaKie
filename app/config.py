@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     BASE_URL: str = "http://localhost:8000"
     DEFAULT_CREDITS: int = 1000
 
+    # CORS — comma-separated list of allowed origins
+    ALLOWED_ORIGINS: str = "http://localhost:3000"
+
+    # Stripe — leave blank to disable billing
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+
     # Telegram
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_BOT_USERNAME: str = ""        # e.g. "SyphaKieBot" (no @)
